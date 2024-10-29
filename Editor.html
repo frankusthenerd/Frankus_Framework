@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Frankus Editor</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf8" />
+    <meta name="viewport" content="width=360, initial-scale=1.0, user-scalable=no" />
+    <meta name="description" content="This is the Frankus editor." />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="Icon.ico" type="image/x-icon" />
+    <style type="text/css">
+      @import url("Frankus.css");
+    </style>
+    <script type="text/javascript" src="Frankus.js"></script>
+    <!-- Globals -->
+    <script type="text/javascript">
+      let current_folder = "";
+      let selected_file = "";
+      let routine_map = {};
+      let icons = {
+        "cpp": "Cpp.png",
+        "hpp": "Cpp.png",
+        "h": "Cpp.png",
+        "script": "C_Lesh.png",
+        "js": "JavaScript.png",
+        "clsh": "C_Lesh.png",
+        "py": "Python.png",
+        "wav": "Sound.png",
+        "mp3": "Sound.png",
+        "png": "Paint.png",
+        "ogg": "Sound.png",
+        "xcf": "Paint.png",
+        "jpg": "Paint.png",
+        "ico": "Paint.png",
+        "raw": "Paint.png",
+        "ttf": "Font.png",
+        "exe": "Application.png",
+        "bin": "Application.png",
+        "bat": "Application.png",
+        "zip": "Zip.png",
+        "svg": "Paint.png",
+        "html": "Globe.png",
+        "pl": "Perl.png",
+        "asm": "Assembly.png",
+        "prgm": "Application.png",
+        "json": "JavaScript.png",
+        "pic": "Paint.png",
+        "ent": "Paint.png",
+        "init": "C_Lesh.png",
+        "bkg": "Paint.png",
+        "map": "Level.png",
+        "mov": "Video.png",
+        "scene": "Video.png"
+      };
+    </script>
+    <!-- Editor -->
+    <script type="text/javascript">
+      function Editor_Page() {
+        frankus_layout.components["files"].On("click", function(component, event) {
+          let file = component.sel_text;
+          if (file.length > 0) {
+            if (file == "Up") { // Up arrow.
+              if (current_folder.length > 0) {
+                let parts = current_folder.split(/\//);
+                if (parts.length == 1) {
+                  current_folder = "";
+                }
+                else {
+                  parts.pop();
+                  current_folder = parts.join("/");
+                }
+                frankus_layout.components["file_name"].Set_Value("");
+                frankus_layout.components["code_editor"].Clear();
+                frankus_layout.components["code"].Clear();
+                selected_file = "";
+                Render_Files();
+              }
+            }
+            else if (file.match(/^\w+\.\w+$/)) { // File
+              let url = Get_File_URL(file);
+              let code_file = new frankusFile(url);
+              code_file.on_read = function() {
+                let f = {
+                  name: file,
+                  lines: code_file.lines.slice(0)
+                };
+                if (f.lines.length > 0) { // Text file.
+                  frankus_layout.components["code_editor"].Load(f);
+                  // Update code map.
+                  Update_Code_Map(f);
+                  frankus_layout.components["file_name"].Set_Value(file);
+                }
+              };
+              code_file.Read();
+              selected_file = url;
+            }
+            else if (file.match(/^\w+$/)) { // Folder
+              let folder = file;
+              current_folder = Get_File_URL(folder);
+              frankus_layout.components["file_name"].Set_Value("");
+              frankus_layout.components["code_editor"].Clear();
+              frankus_layout.components["code"].Clear();
+              selected_file = "";
+              Render_Files();
+            }
+            else {
+              console.log("Weird file format.");
+            }
+          }
+        });
+        frankus_layout.components["code"].On("click", function(component, event) {
+          let item = component.sel_text;
+          if (item.length > 0) {
+            let line_no = routine_map[item.replace(/\./, ":")];
+            frankus_layout.components["code_editor"].Go_To_Line(line_no);
+          }
+        });
+        frankus_layout.components["save"].On("click", function(component, event) {
+          let name = frankus_layout.components["file_name"].Get_Value();
+          if (name.length > 0) {
+            let file = {
+              name: name,
+              lines: []
+            }
+            frankus_layout.components["code_editor"].Save(file);
+            let url = Get_File_URL(file.name);
+            let save_file = new frankusFile(url);
+            save_file.lines = file.lines;
+            save_file.on_write = function() {
+              Update_Code_Map(file);
+              Render_Files();
+              console.log(save_file.message);
+            };
+            save_file.Write();
+          }
+        });
+        frankus_layout.components["clear"].On("click", function(component, event) {
+          frankus_layout.components["code_editor"].Clear();
+          frankus_layout.components["code"].Clear();
+          frankus_layout.components["file_name"].Set_Value("");
+        });
+        frankus_layout.components["search"].On("click", function(component, event) {
+          let search_str = frankus_layout.components["search_str"].Get_Value();
+          if (!isNaN(search_str)) {
+            let line_no = parseInt(search_str)
+            frankus_layout.components["code_editor"].Go_To_Line(line_no);
+          }
+          else {
+            frankus_layout.components["code_editor"].Search(search_str);
+          }
+        });
+        frankus_layout.components["paste"].On("click", function(component, event) {
+          let contents = frankus_layout.components["con"].Get_Value();
+          frankus_layout.components["code_editor"].Paste(contents);
+          frankus_layout.components["con"].Set_Value("");
+        });
+        frankus_layout.components["cpyr"].On("click", function(component, event) {
+          frankus_layout.components["code_editor"].Copy_Routine();
+        });
+        frankus_layout.components["download"].On("click", function(component, event) {
+          let file_name = frankus_layout.components["file_name"].Get_Value();
+          if (file_name.length > 0) {
+            let data = frankus_layout.components["code_editor"].lines.join("\n");
+            frankusFile.Download(file_name, data);
+          }
+        });
+        frankus_layout.components["wik"].On("click", function(component, event) {
+          frankus_layout.Flip_Page("Wiki Editor");
+        });
+        frankus_layout.components["delete"].On("click", function(component, event) {
+          if (selected_file.length > 0) {
+            let result = window.confirm("Do you want to delete " + selected_file + "?");
+            if (result) {
+              frankusFile.Delete(selected_file, function() {
+                Render_Files();
+              });
+            }
+          }
+        });
+      }
+    </script>
+    <!-- Wiki Editor -->
+    <script type="text/javascript">
+      function Wiki_Editor() {
+        frankus_layout.components["wiki_list"].On("click", function(component, event) {
+          let name = component.sel_text.replace(/\s/g, "_");
+          if (name.length > 0) {
+            frankus_layout.components["wiki_viewer"].Load(name);
+          }
+        });
+        frankus_layout.components["print_wiki"].On("click", function(component, event) {
+          frankus_layout.components["wiki_viewer"].Print();
+        });
+      }
+    </script>
+    <!-- Login -->
+    <script type="text/javascript">
+      function Login_Page() {
+        frankus_layout.components["l"].On("click", function(component, event) {
+          frankus_code = frankus_layout.components["login_code"].Get_Value();
+          frankus_layout.Flip_Page("Editor Page");
+          Render_Files();
+        });
+      }
+    </script>
+    <!-- Layout -->
+    <script type="text/javascript">
+      frankus_layout = new frankusLayout();
+      frankus_layout.on_init = function() {
+      };
+      frankus_layout.on_component_init = function() {
+        Editor_Page();
+        Wiki_Editor();
+        Login_Page();
+      };
+      frankus_layout.Add_Page("Editor Page", "editor_screen", null, null, "Editor_Screen.txt", null);
+      frankus_layout.Add_Page("Wiki Editor", "wiki_editor", null, null, "Wiki_Screen.txt", null);
+      frankus_layout.Add_Page("Login Page", "login_screen", null, null, "Login_Screen.txt", null);
+      frankus_layout.Create("Login Page");
+    </script>
+    <!-- API -->
+    <script type="text/javascript">
+      /**
+       * Renders the files to the file palette.
+       */
+      function Render_Files() {
+        frankusFile.Query_Files("all", current_folder, function(file_list) {
+          let items = [];
+          let unique_folders = {};
+          let files = [];
+          let number_of_files = file_list.length;
+          for (let file_index = 0; file_index < number_of_files; file_index++) {
+            let file = file_list[file_index];
+            if (current_folder.length == 0)  {
+              let path = file.split("/");
+              if (path.length == 1) {
+                files.push(path[0]);
+              }
+              else {
+                let folder = path.shift();
+                unique_folders[folder] = folder;
+              }
+            }
+            else {
+              if (file.indexOf(current_folder) == 0) {
+                let path = file.substring(current_folder.length + 1).split("/"); // Get rid of slash.
+                if (path.length == 1) {
+                  files.push(path[0]);
+                }
+                else {
+                  let folder = path.shift();
+                  unique_folders[folder] = folder;
+                }
+              }
+            }
+          }
+          let folders = Object.keys(unique_folders);
+          if (current_folder.length > 0) {
+            items.push("Up_Arrow.png:Up");
+          }
+          let folder_count = folders.length;
+          for (let folder_index = 0; folder_index < folder_count; folder_index++) {
+            let folder = folders[folder_index];
+            items.push("Folder.png:" + folder);
+          }
+          let file_count = files.length;
+          for (let file_index = 0; file_index < file_count; file_index++) {
+            let file = files[file_index];
+            let ext = frankusFile.Get_Extension(file);
+            let icon = icons[ext];
+            if (icon == undefined) {
+              icon = "Text.png";
+            }
+            items.push(icon + ":" + file);
+          }
+          frankus_layout.components["files"].Load_Tools(items, frankus_layout.components["files"].elements[frankus_layout.components["files"].entity.id]);
+        });
+      }
+
+      /**
+       * Gets the file URL.
+       * @param file The name of the file.
+       * @return The file URL.
+       */
+      function Get_File_URL(file) {
+        return (current_folder.length > 0) ? current_folder + "/" + file : file;
+      }
+
+      /**
+       * Updates the code map given a file structure.
+       * @param f The file structure.
+       */
+      function Update_Code_Map(f) {
+        // Update code map.
+        routine_map = frankus_layout.components["code_editor"].Code_Map(f);
+        let items = [];
+        let routines = Object.keys(routine_map);
+        let routine_count = routines.length;
+        for (let routine_index = 0; routine_index < routine_count; routine_index++) {
+          let routine = routines[routine_index];
+          if (routine.match(/:/)) {
+            let parts = routine.split(/:/);
+            items.push(parts[0] + "." + parts[1] + ":");
+          }
+          else {
+            items.push(routine + ":");
+          }
+        }
+        frankus_layout.components["code"].Load_Menu(items, frankus_layout.components["code"].elements[frankus_layout.components["code"].entity.id]);
+      }
+    </script>
+  </head>
+  <body>
+  </body>
+</html>
