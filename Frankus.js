@@ -2754,7 +2754,7 @@ class frankusWiki extends frankusComponent {
       // Save out to a file if specified.
       if (self.settings["file"]) {
         self.Toggle_Saving_Sign(true);
-        let save_file = new frankusFile("Wiki/" + self.settings["file"]);
+        let save_file = new frankusFile("Wiki/" + self.settings["file"] + ".txt");
         save_file.data = self.elements[self.entity.id].value;
         save_file.on_write = function() {
           self.Toggle_Saving_Sign(false);
